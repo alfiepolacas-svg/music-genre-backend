@@ -22,7 +22,7 @@ essentia==2.1b6.dev1110
 
 #Visualization
 matplotlib==3.8.0
-seabron==0.13.0
+seaborn==0.13.0
 
 #Model Management
 mlflow==2.8.1
@@ -34,5 +34,6 @@ python-dotentv==1.0.0
 aiofiles==23.2.1
 
 tqdm==4.66.1
+
 
 
