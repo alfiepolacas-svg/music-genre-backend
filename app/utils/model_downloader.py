@@ -13,7 +13,7 @@ def download_model_if_needed():
     MODEL_PATH = MODEL_DIR / "model_v1.h5"
     
     # Replace with your Google Drive file ID
-    GOOGLE_DRIVE_FILE_ID = "https://drive.google.com/file/d/1ncCtkSs45qsSoTTsJWGsnX3dVtYMuyUo/view?usp=sharing"
+    GOOGLE_DRIVE_FILE_ID = "1ncCtkSs45qsSoTTsJWGsnX3dVtYMuyUo"
     
     # Check if model exists
     if MODEL_PATH.exists():
