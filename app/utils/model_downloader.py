@@ -9,11 +9,12 @@ def download_model_if_needed():
     """Download ML model from Google Drive if not exists locally"""
     
     # Model configuration
-    MODEL_DIR = Path("models/saved_models")
+    MODEL_DIR = Path("saved_models")
     MODEL_PATH = MODEL_DIR / "model_v1.h5"
+    ENCODER_PATH = MODEL_DIR / "label_encoder.json"
     
     # Replace with your Google Drive file ID
-    GOOGLE_DRIVE_FILE_ID = "1ncCtkSs45qsSoTTsJWGsnX3dVtYMuyUo"
+    GOOGLE_DRIVE_FILE_ID = "1m6gxtcwhV9SUo30GWFkbfw0M6whjO_Ad"
     
     # Check if model exists
     if MODEL_PATH.exists():
