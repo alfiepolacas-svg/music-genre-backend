@@ -14,7 +14,7 @@ def download_model_if_needed():
     ENCODER_PATH = MODEL_DIR / "label_encoder.json"
     
     # Replace with your Google Drive file ID
-    GOOGLE_DRIVE_FILE_ID = "1Qv4V0EXyyXc0IRNZRhptWApHyOvlP31"
+    GOOGLE_DRIVE_FILE_ID = "1Qv4V0EXyyXc0IRNZRhptWApHyOvlP31-"
     
     # Check if model exists
     if MODEL_PATH.exists():
