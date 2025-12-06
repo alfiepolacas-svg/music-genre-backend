@@ -1,0 +1,3 @@
+﻿"""
+Pydantic schemas
+"""
