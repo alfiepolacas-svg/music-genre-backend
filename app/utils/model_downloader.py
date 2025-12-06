@@ -1,8 +1,9 @@
 """
 Model Downloader - Downloads ML model from Google Drive
+Optimized for large files (700+ MB)
 """
 import os
-import requests
+import gdown
 from pathlib import Path
 
 def download_model_if_needed():
@@ -12,83 +13,88 @@ def download_model_if_needed():
     MODEL_DIR = Path("models/saved_models")
     MODEL_PATH = MODEL_DIR / "model_v1.h5"
     
-    # Google Drive direct download link
-    # Get this from: Right-click file → Get link → Copy
+    # Google Drive file ID
     FILE_ID = "1Qv4V0EXyyXc0IRNZRhptWApHyOvlP31-"
     
-    # Check if model exists
+    # Check if model exists and is valid (> 100 MB)
     if MODEL_PATH.exists():
-        print(f"Model already exists at {MODEL_PATH}")
-        return True
+        size_mb = MODEL_PATH.stat().st_size / (1024 * 1024)
+        if size_mb > 100:  # Valid model should be > 100MB
+            print(f"✅ Model already exists at {MODEL_PATH} ({size_mb:.2f} MB)")
+            return True
+        else:
+            print(f"⚠️  Model file exists but is too small ({size_mb:.2f} MB). Re-downloading...")
+            MODEL_PATH.unlink()  # Delete corrupted file
     
     # Create directory if needed
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     
-    # Download model using requests (more reliable than gdown)
-    print(f"Model not found. Downloading from Google Drive...")
+    # Download model
+    print(f"📥 Model not found. Downloading from Google Drive...")
     print(f"   Target: {MODEL_PATH}")
+    print(f"   This may take 5-10 minutes for a 708 MB file...")
     
     try:
-        # Google Drive download URL
-        url = f"https://drive.google.com/uc?export=download&id={FILE_ID}"
+        # Construct proper Google Drive URL
+        url = f"https://drive.google.com/uc?id={FILE_ID}"
         
-        print("   Initiating download...")
+        # Download with gdown - use fuzzy matching for large files
+        output = str(MODEL_PATH)
         
-        # Start session
-        session = requests.Session()
-        
-        # First request
-        response = session.get(url, stream=True)
-        
-        # Check for download warning (large files)
-        for key, value in response.cookies.items():
-            if key.startswith('download_warning'):
-                url = f"https://drive.google.com/uc?export=download&id={FILE_ID}&confirm={value}"
-                response = session.get(url, stream=True)
-                break
-        
-        # Download with progress
-        total_size = int(response.headers.get('content-length', 0))
-        block_size = 8192
-        downloaded = 0
-        
-        with open(MODEL_PATH, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=block_size):
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    # Print progress every 50MB
-                    if downloaded % (50 * 1024 * 1024) == 0:
-                        mb_downloaded = downloaded / (1024 * 1024)
-                        print(f"   Downloaded: {mb_downloaded:.1f} MB...")
+        print("   Starting download...")
+        gdown.download(
+            url, 
+            output, 
+            quiet=False,
+            fuzzy=True  # Handle large file warnings automatically
+        )
         
         # Verify download
         if MODEL_PATH.exists():
             size_mb = MODEL_PATH.stat().st_size / (1024 * 1024)
-            print(f"Model downloaded successfully! ({size_mb:.2f} MB)")
-            return True
+            
+            if size_mb > 100:  # Valid model
+                print(f"✅ Model downloaded successfully! ({size_mb:.2f} MB)")
+                return True
+            else:
+                print(f"❌ Download failed - file too small ({size_mb:.2f} MB)")
+                print("   This usually means the download link returned an error page.")
+                MODEL_PATH.unlink()  # Delete bad file
+                return False
         else:
-            print("Model download failed - file not found after download")
+            print("❌ Model file not created after download")
             return False
             
     except Exception as e:
-        print(f"Error downloading model: {e}")
+        print(f"❌ Error downloading model: {e}")
         
-        # Fallback: try gdown
+        # Try alternative: download to temporary name first
         try:
-            print("   Trying alternative method (gdown)...")
-            import gdown
-            url = f"https://drive.google.com/uc?id={FILE_ID}"
-            gdown.download(url, str(MODEL_PATH), quiet=False)
+            print("   Trying alternative download method...")
+            import subprocess
             
-            if MODEL_PATH.exists():
+            # Use gdown CLI directly
+            result = subprocess.run(
+                ["gdown", "--fuzzy", url, "-O", str(MODEL_PATH)],
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0 and MODEL_PATH.exists():
                 size_mb = MODEL_PATH.stat().st_size / (1024 * 1024)
-                print(f"Model downloaded via gdown! ({size_mb:.2f} MB)")
-                return True
+                if size_mb > 100:
+                    print(f"✅ Model downloaded via CLI! ({size_mb:.2f} MB)")
+                    return True
+            
+            print(f"❌ Alternative method also failed")
+            print(f"   stdout: {result.stdout}")
+            print(f"   stderr: {result.stderr}")
+            
         except Exception as e2:
-            print(f"Gdown also failed: {e2}")
+            print(f"❌ Alternative method error: {e2}")
         
         return False
 
 if __name__ == "__main__":
-    download_model_if_needed()
+    success = download_model_if_needed()
+    exit(0 if success else 1)
