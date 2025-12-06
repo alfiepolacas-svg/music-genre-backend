@@ -4,7 +4,7 @@ uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 
 #ML Core
-tensorflow>=2.13.0,<2.18.0
+tensorflow
 
 #Audio Processing
 librosa==0.10.1
@@ -34,3 +34,4 @@ python-dotentv==1.0.0
 aiofiles==23.2.1
 
 tqdm==4.66.1
+
