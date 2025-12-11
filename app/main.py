@@ -96,10 +96,10 @@ async def health_check():
 @app.on_event("startup")
 async def startup_event():
     """Startup event"""
-    logger.info("🚀 Music Genre Classification API started")
-    logger.info("📝 Model will load on first prediction request")
-    logger.info(f"🌐 Running on {settings.HOST}:{settings.PORT}")
-    logger.info(f"📚 Docs available at http://{settings.HOST}:{settings.PORT}/docs")
+    logger.info(" Music Genre Classification API started")
+    logger.info(" Model will load on first prediction request")
+    logger.info(f" Running on {settings.HOST}:{settings.PORT}")
+    logger.info(f" Docs available at http://{settings.HOST}:{settings.PORT}/docs")
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
@@ -122,3 +122,4 @@ if __name__ == "__main__":
         reload=settings.DEBUG,
         timeout_keep_alive=300
     )
+
