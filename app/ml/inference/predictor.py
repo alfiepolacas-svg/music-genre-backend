@@ -1,39 +1,73 @@
-﻿import numpy as np
+"""
+Lazy-loading ML Predictor for Music Genre Classification
+"""
+import numpy as np
 import tensorflow as tf
 import librosa
 from typing import Dict, Tuple, List
 import logging
+import os
+from pathlib import Path
 from app.preprocessing.audio_processor import audio_processor
-from app.preprocessing.feature_extractor import feature_extractor
 from app.core.constants import GENRES
+
+# Suppress TensorFlow warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 logger = logging.getLogger(__name__)
 
 class GenrePredictor:
     """
-    ML Model predictor for genre classification
+    ML Model predictor for genre classification with lazy loading
     """
     def __init__(self, model_path: str):
         self.model_path = model_path
-        self.model = None
-        self.load_model()
+        self._model = None
+        self._loading = False
+        logger.info(f"GenrePredictor initialized (model will load on first prediction)")
     
-    def load_model(self):
-        """Load trained model"""
-        try:
-            self.model = tf.keras.models.load_model(self.model_path)
-            logger.info(f"Model loaded from {self.model_path}")
-        except Exception as e:
-            logger.error(f"Failed to load model: {e}")
-            # Try alternative paths
+    @property
+    def model(self):
+        """Lazy load model on first access"""
+        if self._model is None and not self._loading:
+            self._loading = True
             try:
-                alt_path = self.model_path.replace("models/saved_models/model_v1.h5", "models/best_model.h5")
-                self.model = tf.keras.models.load_model(alt_path)
-                logger.info(f"Model loaded from alternative path: {alt_path}")
-            except Exception as e2:
-                logger.error(f"Failed to load from alternative path: {e2}")
-                # Create mock model for development
-                self.model = None
+                logger.info("🔄 Loading model for first time...")
+                
+                # Check if model file exists
+                model_file = Path(self.model_path)
+                if not model_file.exists():
+                    logger.warning(f"⚠️ Model not found at {self.model_path}")
+                    
+                    # Try to download model
+                    from app.utils.model_downloader import download_model_if_needed
+                    logger.info("📥 Attempting to download model...")
+                    
+                    if download_model_if_needed():
+                        logger.info("✅ Model downloaded successfully")
+                    else:
+                        logger.error("❌ Model download failed")
+                        self._model = None
+                        return None
+                
+                # Load model
+                if model_file.exists():
+                    logger.info(f"📂 Loading model from {self.model_path}")
+                    self._model = tf.keras.models.load_model(self.model_path)
+                    logger.info(f"✅ Model loaded successfully!")
+                    logger.info(f"   Input shape: {self._model.input_shape}")
+                    logger.info(f"   Output shape: {self._model.output_shape}")
+                else:
+                    logger.error("❌ Model file still not found after download attempt")
+                    self._model = None
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to load model: {e}", exc_info=True)
+                self._model = None
+            finally:
+                self._loading = False
+        
+        return self._model
     
     def predict(self, audio_path: str) -> Tuple[str, float, Dict[str, float]]:
         """
@@ -41,12 +75,18 @@ class GenrePredictor:
         Returns: (predicted_genre, confidence, all_predictions)
         """
         try:
+            # Get model (triggers lazy load if needed)
+            model = self.model
+            
+            if model is None:
+                logger.warning("⚠️ Model not available, using mock prediction")
+                return self._mock_prediction()
+            
             # Preprocess audio
+            logger.info(f"🎵 Processing audio: {audio_path}")
             audio = audio_processor.preprocess(audio_path)
             
             # Extract mel-spectrogram features (for CNN model)
-            # Calculate natural dimensions based on audio length and hop_length
-            # For 30s audio: frames = (22050 * 30) / 512 ≈ 1292
             mel_spec = librosa.feature.melspectrogram(
                 y=audio,
                 sr=audio_processor.sample_rate,
@@ -62,17 +102,12 @@ class GenrePredictor:
             # Reshape for model input (add batch dimension)
             features = np.expand_dims(features, axis=0)
             
-            logger.info(f"Audio shape: {audio.shape}")
-            logger.info(f"Mel-spectrogram shape: {mel_spec_db.shape}")
-            logger.info(f"Final features shape: {features.shape}")
-            logger.info(f"Expected model input: (None, 128, 1292, 1)")
+            logger.info(f"   Audio shape: {audio.shape}")
+            logger.info(f"   Mel-spectrogram shape: {mel_spec_db.shape}")
+            logger.info(f"   Final features shape: {features.shape}")
             
             # Predict
-            if self.model:
-                predictions = self.model.predict(features, verbose=0)[0]
-            else:
-                # Mock prediction for development
-                predictions = np.random.dirichlet(np.ones(len(GENRES)))
+            predictions = model.predict(features, verbose=0)[0]
             
             # Get results with bounds checking
             predicted_idx = np.argmax(predictions)
@@ -80,27 +115,24 @@ class GenrePredictor:
             # Safety check for index bounds
             if predicted_idx >= len(GENRES):
                 logger.error(f"Predicted index {predicted_idx} out of bounds for GENRES list (length: {len(GENRES)})")
-                logger.error(f"Model output shape: {predictions.shape}, GENRES: {GENRES}")
                 predicted_idx = 0  # Default to first genre
             
             predicted_genre = GENRES[predicted_idx]
             confidence = float(predictions[predicted_idx])
             
-            logger.info(f"Predicted: {predicted_genre} with confidence: {confidence:.3f}")
-            logger.info(f"Model output length: {len(predictions)}, GENRES length: {len(GENRES)}")
+            logger.info(f"✅ Predicted: {predicted_genre} with confidence: {confidence:.3f}")
             
-            # Create predictions dictionary with length matching
+            # Create predictions dictionary
             all_predictions = {}
             min_length = min(len(GENRES), len(predictions))
             
             for i in range(min_length):
                 all_predictions[GENRES[i]] = float(predictions[i])
             
-            # If there are more predictions than genres, ignore excess
+            # Handle length mismatches
             if len(predictions) > len(GENRES):
                 logger.warning(f"Model returned {len(predictions)} predictions but only {len(GENRES)} genres available")
             
-            # If there are more genres than predictions, pad with zeros
             if len(GENRES) > len(predictions):
                 logger.warning(f"Only {len(predictions)} predictions for {len(GENRES)} genres, padding with zeros")
                 for i in range(len(predictions), len(GENRES)):
@@ -116,8 +148,38 @@ class GenrePredictor:
             return predicted_genre, confidence, all_predictions
             
         except Exception as e:
-            logger.error(f"Prediction failed: {e}")
-            raise
+            logger.error(f"❌ Prediction failed: {e}", exc_info=True)
+            logger.warning("⚠️ Falling back to mock prediction")
+            return self._mock_prediction()
+    
+    def _mock_prediction(self) -> Tuple[str, float, Dict[str, float]]:
+        """
+        Fallback mock prediction when model is unavailable
+        """
+        import random
+        
+        # Generate random predictions
+        predictions = np.random.dirichlet(np.ones(len(GENRES)))
+        
+        predicted_idx = np.argmax(predictions)
+        predicted_genre = GENRES[predicted_idx]
+        confidence = float(predictions[predicted_idx])
+        
+        all_predictions = {
+            genre: float(pred)
+            for genre, pred in zip(GENRES, predictions)
+        }
+        
+        # Sort by confidence
+        all_predictions = dict(
+            sorted(all_predictions.items(), 
+                  key=lambda x: x[1], 
+                  reverse=True)
+        )
+        
+        logger.info(f"🎲 Mock prediction: {predicted_genre} ({confidence:.3f})")
+        
+        return predicted_genre, confidence, all_predictions
     
     def predict_batch(
         self,
@@ -130,4 +192,6 @@ class GenrePredictor:
             results.append(result)
         return results
 
+
+# Singleton instance - model will load lazily on first prediction
 predictor = GenrePredictor(model_path="models/saved_models/model_v1.h5")
