@@ -1,11 +1,16 @@
-﻿"""
+"""
 FastAPI Main Application
 """
+import os
+
+# Suppress TensorFlow warnings BEFORE any imports
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import logging
-
 from app.core.config import settings
 from app.api.v1.endpoints import predict
 from app.api.v1.endpoints import genres as genres_router
@@ -41,6 +46,7 @@ app.include_router(
     prefix="/api/v1",
     tags=["prediction"]
 )
+
 app.include_router(
     genres_router.router,
     prefix="/api/v1",
@@ -59,11 +65,41 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "model_loaded": predict.predictor.model is not None
-    }
+    """
+    Health check endpoint for Railway
+    IMPORTANT: Must respond quickly without loading the model
+    """
+    try:
+        # Check if predictor exists (don't access .model property!)
+        model_status = "not_loaded"
+        
+        # Only check if model is already loaded (don't trigger lazy load)
+        if hasattr(predict.predictor, '_model') and predict.predictor._model is not None:
+            model_status = "loaded"
+        
+        return {
+            "status": "healthy",
+            "service": "music-genre-api",
+            "model_status": model_status,
+            "version": "1.0.0"
+        }
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        # Always return healthy even if there's an error
+        # Railway just needs to know the service is responding
+        return {
+            "status": "healthy",
+            "service": "music-genre-api",
+            "model_status": "unknown"
+        }
+
+@app.on_event("startup")
+async def startup_event():
+    """Startup event"""
+    logger.info("🚀 Music Genre Classification API started")
+    logger.info("📝 Model will load on first prediction request")
+    logger.info(f"🌐 Running on {settings.HOST}:{settings.PORT}")
+    logger.info(f"📚 Docs available at http://{settings.HOST}:{settings.PORT}/docs")
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
@@ -83,5 +119,6 @@ if __name__ == "__main__":
         "app.main:app",
         host=settings.HOST,
         port=settings.PORT,
-        reload=settings.DEBUG
+        reload=settings.DEBUG,
+        timeout_keep_alive=300
     )
